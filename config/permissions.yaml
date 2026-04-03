@@ -36,6 +36,11 @@ tools:
     risk: medium
     require_approval: true
     allowed_roles: [admin]
+  xander_exec:
+    risk: low
+    auto_execute: true
+    allowed_roles: [admin, operator]
+    description: "Execute tasks via xander-operator"
 
 defaults:
   auto_execute_risk: [low]

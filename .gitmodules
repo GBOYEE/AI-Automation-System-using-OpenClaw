@@ -1,12 +1,3 @@
 [submodule "polish/xander-operator"]
 	path = polish/xander-operator
 	url = https://github.com/GBOYEE/xander-operator.git
-[submodule "core/agent-core"]
-	path = core/agent-core
-	url = https://github.com/GBOYEE/agent-core
-[submodule "core/automation-engine"]
-	path = core/automation-engine
-	url = https://github.com/GBOYEE/automation-engine
-[submodule "core/trading-lab"]
-	path = core/trading-lab
-	url = https://github.com/GBOYEE/trading-lab

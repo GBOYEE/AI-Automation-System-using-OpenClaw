@@ -1,6 +1,9 @@
 """OpenClaw Orchestrator — explicit pipeline: receive → plan → execute → observe."""
 import uuid
 import logging
+import os
+import json
+import requests
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -8,14 +11,75 @@ from ..telemetry import get_trace_id
 
 logger = logging.getLogger("openclaw.orchestrator")
 
+class SimpleLLMPlanner:
+    """"Uses Ollama to generate a step-by-step plan.
+    """
+    def __init__(self, model: str = "phi3:mini", base_url: str = None):
+        self.model = model
+        self.base_url = base_url or os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+
+    def plan(self, description: str) -> Dict[str, Any]:
+        prompt = f"""You are a disciplined assistant that creates step-by-step execution plans.
+
+Task: {description}
+
+Available tools:
+- shell: run a shell command (cmd: string)
+- disk_clean: clean temporary files (limit_mb: int)
+- docker_restart: restart a container (container: string)
+- file_read: read a file (path: string)
+- file_write: write a file (path: string, content: string)
+
+Provide a JSON plan with:
+{{
+  "objective": "string",
+  "steps": [
+    {{"step": 1, "action": "tool_name", "args": {{...}}, "validation": "how to check"}}
+  ]
+}}
+
+Keep steps <= 5. Respond ONLY with JSON."""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 512}
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            text = data.get("response", "").strip()
+            # Extract JSON
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end != -1:
+                plan = json.loads(text[start:end])
+                return plan
+            else:
+                raise ValueError("No JSON found in LLM response")
+        except Exception as e:
+            logger.error(f"Planning failed: {e}")
+            # Fallback: single shell step with the original description as a generic command
+            return {
+                "objective": description,
+                "steps": [
+                    {"step": 1, "action": "shell", "args": {"cmd": description}, "validation": "Check exit code"}
+                ]
+            }
+
 class Orchestrator:
     """
     Coordinates the flow of a task from reception to completion.
     Steps: receive → plan → execute → observe
     """
-    def __init__(self, db_session_factory, permissions: Dict[str, Any]):
+    def __init__(self, db_session_factory, permissions: Dict[str, Any], planner=None):
         self.db_session = db_session_factory
         self.permissions = permissions
+        self.planner = planner or SimpleLLMPlanner()
         self.metrics = {
             "tasks_received": 0,
             "tasks_planned": 0,
@@ -44,14 +108,8 @@ class Orchestrator:
         return task_id
 
     def plan_task(self, task_id: str, description: str) -> Dict[str, Any]:
-        # TODO: integrate actual PlannerAgent
-        plan = {
-            "task_id": task_id,
-            "steps": [
-                {"step": 1, "action": "shell", "args": {"cmd": "echo Planning placeholder"}}
-            ],
-            "estimated_risk": "low",
-        }
+        plan = self.planner.plan(description)
+        plan["task_id"] = task_id
         event = {
             "event_id": str(uuid.uuid4()),
             "task_id": task_id,
@@ -141,6 +199,9 @@ class Orchestrator:
             elif tool == "docker_restart":
                 from ..tools.docker_tools import restart_container
                 return restart_container(args.get("container"))
+            elif tool == "xander_operator":
+                from ..tools.xander_operator_tool import run_xander_operator
+                return run_xander_operator(task=args.get("task", ""), context=args.get("context", ""))
             else:
                 return {"status": "error", "error": f"Unknown tool: {tool}"}
         except Exception as e:
