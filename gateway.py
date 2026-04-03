@@ -23,6 +23,8 @@ from .core.orchestrator import Orchestrator
 from .approvals.api import router as approvals_router
 from .telemetry import set_trace_id
 
+START_TIME = time.time()
+
 # ----- Auth dependencies -----
 def verify_api_key(Authorization: Optional[str] = Header(None)):
     """Enforce Bearer token if OPENCLAW_API_KEY is set."""
@@ -102,12 +104,16 @@ async def logging_middleware(request: Request, call_next):
 # ----- Public endpoints -----
 @app.get("/health")
 async def health():
+    uptime = time.time() - START_TIME
+    orchestrator_metrics = orchestrator.metrics if orchestrator else {}
     return {
         "status": "ok",
         "timestamp": time.time(),
         "version": "1.2.0",
         "environment": settings.ENV,
+        "uptime_seconds": round(uptime, 2),
         "database": "connected" if db_factory else "disconnected",
+        "orchestrator": orchestrator_metrics,
     }
 
 @app.get("/metrics")
