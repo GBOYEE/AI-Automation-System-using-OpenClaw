@@ -200,8 +200,26 @@ class Orchestrator:
                 from ..tools.docker_tools import restart_container
                 return restart_container(args.get("container"))
             elif tool == "xander_operator":
-                from ..tools.xander_operator_tool import run_xander_operator
-                return run_xander_operator(task=args.get("task", ""), context=args.get("context", ""))
+                # Use the xander-operator CLI directly
+                import subprocess, json, os
+                cli_path = "/root/.openclaw/workspace/xander-operator/.venv/bin/xander-operator"
+                task_arg = args.get("task", "")
+                cmd = [cli_path, "--task", task_arg, "--output", "json"]
+                try:
+                    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd="/root/.openclaw/workspace")
+                    if proc.returncode != 0:
+                        return {"status": "error", "error": f"xander-operator exit {proc.returncode}: {proc.stderr.strip()}"}
+                    result = json.loads(proc.stdout)
+                    # Normalize to orchestrator expected format: status 'success'/'error'
+                    status = result.get("status", "error")
+                    if status == "completed":
+                        return {"status": "success", "result": result}
+                    else:
+                        return {"status": "error", "error": result.get("summary", "operator failed")}
+                except subprocess.TimeoutExpired:
+                    return {"status": "error", "error": "xander-operator timeout"}
+                except Exception as e:
+                    return {"status": "error", "error": str(e)}
             else:
                 return {"status": "error", "error": f"Unknown tool: {tool}"}
         except Exception as e:
