@@ -1,0 +1,19 @@
+[Unit]
+Description=Xander Autonomous Service (OpenClaw Orchestrator)
+After=network.target
+
+[Service]
+Type=simple
+User=gboyee
+WorkingDir=/root/.openclaw/workspace/polish/openclaw
+Environment="PATH=/root/.openclaw/workspace/polish/openclaw/.venv/bin"
+Environment="TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN"
+Environment="TELEGRAM_DEFAULT_CHAT_ID=YOUR_CHAT_ID"
+Environment="OPERATOR_MODE=cli"
+Environment="TASK_QUEUE_PATH=/data/tasks.db"
+ExecStart=/root/.openclaw/workspace/polish/openclaw/.venv/bin/python -m services.autonomous_service
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
